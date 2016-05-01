@@ -5,13 +5,15 @@ var beanstalk = require('fivebeans');
 var Promise = require('bluebird');
 var os = require('os');
 var util = require('util');
-var config = require('./config');
 var request = require("request");
 var cheerio = require("cheerio");
 var url = require('url');
+var assert = require('assert');
+var _ = require('underscore');
+
+var config = require('./config');
 
 var MongoClient = require('mongodb').MongoClient;
-var assert = require('assert');
 var db;
 
 // Number of Cores on this machine
@@ -47,43 +49,80 @@ for (var i = 0; i < numInstances; i++) {
 var numWorking = 0;
 
 
+function htmlBodyToLinksArray(body, absoluteURL) {
+	var linksObject = [];
+	$ = cheerio.load(body);
+	$('a').each(function(i, link) {
+		if ($(link).attr('href')) {
+			var link = url.parse(url.resolve(absoluteURL, $(link).attr(
+				'href')));
+			linksObject.push(link.href);
+			// log.debug(linkText, absoluteURL);
+		}
+	});
+	return _.uniq(linksObject);
+}
+
 
 // Specify what work we want to do in this kernel
 function kernel(jobID, payload, client, clientIdx) {
-	var payloadOptions = {
-		uri: payload.toString('ascii')
-	};
+
+	var requestURL = payload.toString('ascii');
 
 	return new Promise(function(res, rej) {
 
 		var startTime = Date.now();
 		numWorking++;
 
-		db.collection("publicatii").find({
-			'url': payloadOptions.uri
-		}, function(err, docs) {
-			docs.each(function(err, doc) {
-				if (doc) {
 
 
-					console.log(doc);
+		// get content of web page
+		request(requestURL, function(error, response, body) {
+
+			// get data from collection
+			db.collection("publicatii").find({
+				'url': requestURL
+			}, function(err, docs) {
+				docs.each(function(err, doc) {
+					if (doc) {
 
 
 
-				}
+						// if data exists, compare new and old
+						newLinks = htmlBodyToLinksArray(body, requestURL);
+
+						oldLinks = htmlBodyToLinksArray(doc.ultimaUpdatare,
+							requestURL);
+
+						// if (body != doc) {
+						if (1 === 1) {
+							// only do if new Links and oldLinks are different
+
+							db.collection("publicatii").update({
+								'url': requestURL
+							}, {
+								$set: {
+									'ultimaUpdatare': body,
+									"timestamp": new Date()
+								}
+							}, {
+								upsert: true
+							}, function(err, result) {
+								if (err) console.log(err);
+							});
+
+						}
+
+						// console.log(newLinks);
+						linksDifference = _.difference(newLinks, oldLinks);
+						console.log(linksDifference);
+
+					}
+				});
 			});
-		});
 
-		request(payloadOptions, function(error, response, body) {
-			$ = cheerio.load(body);
-			$('a').each(function(i, link) {
-				var linkText = $(link).text();
-				if ($(link).attr('href')) {
-					var absoluteURL = url.resolve(payloadOptions.uri, $(link).attr(
-						'href'));
-					// log.debug(linkText, absoluteURL);
-				}
-			});
+
+
 		});
 
 		setTimeout(function() {

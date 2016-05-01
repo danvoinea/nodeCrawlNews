@@ -6,7 +6,6 @@ var Promise = require('bluebird');
 var os = require('os');
 var util = require('util');
 var config = require('./config');
-
 var MongoClient = require('mongodb').MongoClient;
 var assert = require('assert');
 
@@ -41,7 +40,7 @@ MongoClient.connect(config.mongo, function(err, db) {
         //Put some  jobs in the tubes
         addresses.forEach(function(payload) {
 
-          console.log(payload);
+          log.debug(new Date() + ' ' + payload.url);
 
           client.put(
             0, // Priority
